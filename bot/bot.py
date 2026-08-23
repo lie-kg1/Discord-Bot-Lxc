@@ -21,13 +21,24 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Load environment variables
+# Bot start time tracker for accurate uptime
+_BOT_START_TIME = None
+
+# Load environment variables safely
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key, str(default))
+    try:
+        return int(val)
+    except ValueError:
+        logger.warning(f"Invalid integer for {key}: '{val}', using default {default}")
+        return default
+
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 BOT_NAME = os.getenv('BOT_NAME', 'PapiaGamerz VMS')
 PREFIX = os.getenv('PREFIX', '!')
 YOUR_SERVER_IP = os.getenv('YOUR_SERVER_IP')
-MAIN_ADMIN_ID = int(os.getenv('MAIN_ADMIN_ID', '1210291131301101618'))
-VPS_USER_ROLE_ID = int(os.getenv('VPS_USER_ROLE_ID', '1210291131301101618'))
+MAIN_ADMIN_ID = _env_int('MAIN_ADMIN_ID', 1210291131301101618)
+VPS_USER_ROLE_ID = _env_int('VPS_USER_ROLE_ID', 0)
 DEFAULT_STORAGE_POOL = os.getenv('DEFAULT_STORAGE_POOL', 'default')
 HOST_MOTD = os.getenv('HOST_MOTD', '')
 BOT_VERSION = os.getenv('BOT_VERSION', '8.0-PRO')
@@ -36,8 +47,8 @@ BOT_THUMBNAIL_URL = os.getenv('BOT_THUMBNAIL_URL', 'https://i.imgur.com/Tv3clt0.
 BOT_ICON_URL = os.getenv('BOT_ICON_URL', 'https://i.imgur.com/Tv3clt0.jpeg')
 
 # VPS Expiration Settings
-DEFAULT_VPS_EXPIRATION_DAYS = int(os.getenv('DEFAULT_VPS_EXPIRATION_DAYS', '30'))
-EXPIRATION_WARNING_DAYS = int(os.getenv('EXPIRATION_WARNING_DAYS', '1'))
+DEFAULT_VPS_EXPIRATION_DAYS = _env_int('DEFAULT_VPS_EXPIRATION_DAYS', 30)
+EXPIRATION_WARNING_DAYS = _env_int('EXPIRATION_WARNING_DAYS', 1)
 
 # !deploy command — members with DEPLOY_ROLE_ID get free VPS instantly
 # Set these in your .env file:
@@ -47,14 +58,14 @@ EXPIRATION_WARNING_DAYS = int(os.getenv('EXPIRATION_WARNING_DAYS', '1'))
 #   DEPLOY_DISK=80                      (GB disk per deployed VPS)
 #   VPS_DEPLOY_LIMIT=2                  (max VPS per user via !deploy — users cannot create more than this)
 #   DEPLOY_SLOT=2                       (total global VPS slot cap across ALL users, 0 = unlimited)
-DEPLOY_ROLE_ID = int(os.getenv('DEPLOY_ROLE_ID', '0'))
-DEPLOY_RAM     = int(os.getenv('DEPLOY_RAM',  '16'))
-DEPLOY_CPU     = int(os.getenv('DEPLOY_CPU',  '3'))
-DEPLOY_DISK    = int(os.getenv('DEPLOY_DISK', '80'))
+DEPLOY_ROLE_ID = _env_int('DEPLOY_ROLE_ID', 0)
+DEPLOY_RAM     = _env_int('DEPLOY_RAM', 16)
+DEPLOY_CPU     = _env_int('DEPLOY_CPU', 3)
+DEPLOY_DISK    = _env_int('DEPLOY_DISK', 80)
 # VPS_DEPLOY_LIMIT = max VPS a single user can create via !deploy
 # Supports both VPS_DEPLOY_LIMIT (new) and DEPLOY_LIMIT (old) — VPS_DEPLOY_LIMIT takes priority
-DEPLOY_LIMIT   = int(os.getenv('VPS_DEPLOY_LIMIT', os.getenv('DEPLOY_LIMIT', '2')))
-DEPLOY_SLOT    = int(os.getenv('DEPLOY_SLOT', '0'))
+DEPLOY_LIMIT   = _env_int('VPS_DEPLOY_LIMIT', _env_int('DEPLOY_LIMIT', 2))
+DEPLOY_SLOT    = _env_int('DEPLOY_SLOT', 0)
 
 # SSH Configuration
 SSH_FIX_SCRIPT = """#!/bin/bash
@@ -1447,7 +1458,9 @@ DEFAULT_STORAGE_POOL = os.getenv('DEFAULT_STORAGE_POOL', get_default_storage_poo
 # Bot events
 @bot.event
 async def on_ready():
-    global vps_data, admin_data
+    global vps_data, admin_data, _BOT_START_TIME
+    if _BOT_START_TIME is None:
+        _BOT_START_TIME = datetime.now()
     logger.info(f'{bot.user} has connected to Discord!')
     # Reload ALL data from DB on every ready (covers restarts + gateway reconnects)
     vps_data = get_vps_data()
@@ -2173,12 +2186,15 @@ class ManageView(discord.ui.View):
         ssh_button.callback = lambda inter: self.action_callback(inter, 'tmate')
         sshx_button = discord.ui.Button(label="🌐 SSHX", style=discord.ButtonStyle.primary)
         sshx_button.callback = lambda inter: self.action_callback(inter, 'sshx')
+        regen_button = discord.ui.Button(label="🔐 Regen Password", style=discord.ButtonStyle.primary)
+        regen_button.callback = lambda inter: self.action_callback(inter, 'regen_password')
         stats_button = discord.ui.Button(label="📊 Stats", style=discord.ButtonStyle.secondary)
         stats_button.callback = lambda inter: self.action_callback(inter, 'stats')
         self.add_item(start_button)
         self.add_item(stop_button)
         self.add_item(ssh_button)
         self.add_item(sshx_button)
+        self.add_item(regen_button)
         self.add_item(stats_button)
 
     async def select_vps(self, interaction: discord.Interaction):
@@ -2665,32 +2681,7 @@ def get_host_disk_usage():
         return "Unknown"
 
 
-async def get_host_stats(node_id: int) -> Dict:
-    node = get_node(node_id)
-    if node['is_local']:
-        return {
-            "cpu": get_host_cpu_usage(),
-            "ram": get_host_ram_usage(),
-            "disk": get_host_disk_usage()
-        }
-    else:
-        url = f"{node['url']}/api/get_host_stats"
-        params = {"api_key": node["api_key"]}
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            stats = response.json()
-            # Fallbacks if remote API doesn't provide
-            stats['disk'] = stats.get('disk', 'Unknown')
-            return stats
-        except Exception as e:
-            # Remote node unreachable - don't spam error logs
-            logger.debug(f"Remote node {node['name']} stats unavailable: {type(e).__name__}")
-            return {"cpu": 0.0, "ram": 0.0, "disk": "Unknown"}
 
-
-@bot.command(name='vps-list')
-@is_admin()
 async def vps_list(ctx, node_id: int = 1):
     node = get_node(node_id)
     if not node:
@@ -2816,7 +2807,7 @@ async def vps_list(ctx, node_id: int = 1):
         chunk_size = 6  # Smaller chunks for cleaner mobile-friendly embeds
         chunks = [vps_info[i:i + chunk_size] for i in range(0, len(vps_info), chunk_size)]
         first_chunk_text = "\n".join(chunks[0])
-        add_field(embed, "📋 **Active VPS (1/{len(chunks)})**", f"```{first_chunk_text}```", False)
+        add_field(embed, f"📋 **Active VPS (1/{len(chunks)})**", f"```{first_chunk_text}```", False)
 
         # Paginated follow-ups with consistent styling
         for idx, chunk in enumerate(chunks[1:], 2):
@@ -3250,7 +3241,7 @@ async def add_resources(ctx, vps_id: str, ram: int = None, cpu: int = None, disk
     if was_running:
         await ctx.send(embed=create_info_embed("Stopping VPS", f"Stopping VPS `{vps_id}` to apply resource changes..."))
         try:
-            await execute_lxc(vps_id, "stop {vps_id}", node_id=node_id)
+            await execute_lxc(vps_id, f"stop {vps_id}", node_id=node_id)
             found_vps['status'] = 'stopped'
             save_vps_data()
         except Exception as e:
@@ -3317,8 +3308,10 @@ async def system_status(ctx):
     start_time = time.time()
     
     # Get bot uptime
-    bot_start_time = datetime.now() - datetime.fromtimestamp(start_time - bot.latency)
-    bot_uptime = str(bot_start_time).split('.')[0]  # Remove microseconds
+    if _BOT_START_TIME:
+        bot_uptime = str(datetime.now() - _BOT_START_TIME).split('.')[0]
+    else:
+        bot_uptime = "Unknown"
     
     # Get total nodes
     nodes = get_nodes()
@@ -4244,32 +4237,23 @@ async def stop_all_vps(ctx):
                 stopped_count = 0
                 nodes = get_nodes()
                 for node in nodes:
-                    if node['is_local']:
-                        proc = await asyncio.create_subprocess_exec(
-                            "lxc", "stop", "--all", "--force",
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        stdout, stderr = await proc.communicate()
-                        if proc.returncode != 0:
-                            logger.error(f"Failed to stop all on local node: {stderr.decode()}")
-                            continue
-                    else:
-                        url = f"{node['url']}/api/execute"
-                        data = {"command": "lxc stop --all --force"}
-                        params = {"api_key": node["api_key"]}
-                        response = requests.post(url, json=data, params=params)
-                        if response.status_code != 200:
-                            logger.error(f"Failed to stop all on node {node['name']}")
-                            continue
+                    # Only stop containers we actually track in the database
+                    tracked = [v['container_name'] for uid, lst in vps_data.items() for v in lst if v.get('node_id') == node['id'] and v.get('status') == 'running']
+                    for container in tracked:
+                        try:
+                            await execute_lxc(container, f"stop {container}", node_id=node['id'])
+                            stopped_count += 1
+                        except Exception as e:
+                            logger.warning(f"Failed to stop {container} on node {node['name']}: {e}")
+
                     for user_id, vps_list in vps_data.items():
                         for vps in vps_list:
                             if vps.get('node_id') == node['id'] and vps.get('status') == 'running':
                                 vps['status'] = 'stopped'
                                 vps['suspended'] = False
-                                stopped_count += 1
+
                 save_vps_data()
-                embed = create_success_embed("All VPS Stopped", f"Successfully stopped {stopped_count} VPS across all nodes.")
+                embed = create_success_embed("All VPS Stopped", f"Successfully stopped {stopped_count} tracked VPS across all nodes.")
                 await interaction.followup.send(embed=embed)
             except Exception as e:
                 embed = create_error_embed("Error", f"Error stopping VPS: {str(e)}")

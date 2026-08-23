@@ -18,50 +18,26 @@ if [ ! -f "$ENV_PATH" ]; then
 fi
 
 # Read current values from .env if they exist
-CURRENT_RAM=$(grep "^DEFAULT_RAM=" "$ENV_PATH" | cut -d '=' -f2)
-CURRENT_CPU=$(grep "^DEFAULT_CPU=" "$ENV_PATH" | cut -d '=' -f2)
-CURRENT_DISK=$(grep "^DEFAULT_DISK=" "$ENV_PATH" | cut -d '=' -f2)
-CURRENT_HOSTNAME=$(grep "^VPS_HOSTNAME=" "$ENV_PATH" | cut -d '=' -f2)
-CURRENT_SERVER_LIMIT=$(grep "^SERVER_LIMIT=" "$ENV_PATH" | cut -d '=' -f2)
-CURRENT_TOTAL_LIMIT=$(grep "^TOTAL_SERVER_LIMIT=" "$ENV_PATH" | cut -d '=' -f2)
+get_env_val() {
+    local key="$1" default="$2"
+    local val
+    val=$(grep "^${key}=" "$ENV_PATH" 2>/dev/null | cut -d '=' -f2-)
+    printf '%s' "${val:-$default}"
+}
 
-CURRENT_RAM=${CURRENT_RAM:-2g}
-CURRENT_CPU=${CURRENT_CPU:-1}
-CURRENT_DISK=${CURRENT_DISK:-10G}
-CURRENT_HOSTNAME=${CURRENT_HOSTNAME:-unix-free}
-CURRENT_SERVER_LIMIT=${CURRENT_SERVER_LIMIT:-1}
-CURRENT_TOTAL_LIMIT=${CURRENT_TOTAL_LIMIT:-50}
+CURRENT_RAM=$(get_env_val "DEPLOY_RAM" "16")
+CURRENT_CPU=$(get_env_val "DEPLOY_CPU" "3")
+CURRENT_DISK=$(get_env_val "DEPLOY_DISK" "80")
+CURRENT_LIMIT=$(get_env_val "VPS_DEPLOY_LIMIT" "2")
+CURRENT_SLOT=$(get_env_val "DEPLOY_SLOT" "50")
+CURRENT_EXPIRY=$(get_env_val "DEFAULT_VPS_EXPIRATION_DAYS" "30")
+CURRENT_WARNING=$(get_env_val "EXPIRATION_WARNING_DAYS" "1")
 
 printf "\033[1;33mCurrent values are shown in brackets [ ]. Press Enter to keep current values.\033[0m\n\n"
 
 # ---- Validation helpers ----
-validate_size() {
-    # matches e.g. 2g, 512m, 10G, 1024M
-    [[ "$1" =~ ^[0-9]+[gGmM]$ ]]
-}
-
 validate_int() {
     [[ "$1" =~ ^[0-9]+$ ]]
-}
-
-validate_hostname() {
-    # basic hostname rule: letters, digits, hyphens, 1-63 chars, no leading/trailing hyphen
-    [[ "$1" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]
-}
-
-prompt_size() {
-    local label="$1" current="$2" __resultvar="$3"
-    local input
-    while true; do
-        read -p "$label [$current]: " input
-        input=${input:-$current}
-        if validate_size "$input"; then
-            printf -v "$__resultvar" '%s' "$input"
-            break
-        else
-            printf "\033[1;31m  ✗ Invalid format. Use a number followed by g/G or m/M, e.g. 2g, 512m.\033[0m\n"
-        fi
-    done
 }
 
 prompt_int() {
@@ -79,58 +55,40 @@ prompt_int() {
     done
 }
 
-prompt_hostname() {
-    local label="$1" current="$2" __resultvar="$3"
-    local input
-    while true; do
-        read -p "$label [$current]: " input
-        input=${input:-$current}
-        if validate_hostname "$input"; then
-            printf -v "$__resultvar" '%s' "$input"
-            break
-        else
-            printf "\033[1;31m  ✗ Invalid hostname. Use letters, digits, hyphens only (no leading/trailing hyphen).\033[0m\n"
-        fi
-    done
-}
+# ---- Prompts ----
+prompt_int "🧠  Deploy RAM (GB)"              "$CURRENT_RAM"           NEW_RAM
+prompt_int "⚡  Deploy CPU Cores"             "$CURRENT_CPU"           NEW_CPU
+prompt_int "💾  Deploy Disk (GB)"            "$CURRENT_DISK"          NEW_DISK
+prompt_int "📊  Deploy Limit per user"       "$CURRENT_LIMIT"         NEW_LIMIT
+prompt_int "📈  Global Deploy Slot Cap"      "$CURRENT_SLOT"          NEW_SLOT
+prompt_int "⏰  Default Expiration Days"     "$CURRENT_EXPIRY"        NEW_EXPIRY
+prompt_int "⚠️   Expiration Warning Days"    "$CURRENT_WARNING"       NEW_WARNING
 
-# ---- Prompts (each validated, re-prompts on bad input) ----
-prompt_size    "🧠 Enter Default RAM"              "$CURRENT_RAM"           NEW_RAM
-prompt_int     "⚡ Enter Default CPU"               "$CURRENT_CPU"           NEW_CPU
-prompt_size    "💾 Enter Default Disk"              "$CURRENT_DISK"          NEW_DISK
-prompt_hostname "🌐 Enter VPS Hostname"             "$CURRENT_HOSTNAME"      NEW_HOSTNAME
-prompt_int     "📊 Enter Server Limit per user"     "$CURRENT_SERVER_LIMIT"  NEW_SERVER_LIMIT
-prompt_int     "📈 Enter Total Server Limit"        "$CURRENT_TOTAL_LIMIT"   NEW_TOTAL_LIMIT
-
-# ---- Safely update or append the values in the .env file ----
-# Values are passed via environment variables (not interpolated into the
-# Python source) so nothing typed at the prompts can break out of the
-# string or run arbitrary code.
+# ---- Safely update the .env file ----
 ENV_PATH="$ENV_PATH" \
 NEW_RAM="$NEW_RAM" \
 NEW_CPU="$NEW_CPU" \
 NEW_DISK="$NEW_DISK" \
-NEW_HOSTNAME="$NEW_HOSTNAME" \
-NEW_SERVER_LIMIT="$NEW_SERVER_LIMIT" \
-NEW_TOTAL_LIMIT="$NEW_TOTAL_LIMIT" \
+NEW_LIMIT="$NEW_LIMIT" \
+NEW_SLOT="$NEW_SLOT" \
+NEW_EXPIRY="$NEW_EXPIRY" \
+NEW_WARNING="$NEW_WARNING" \
 python3 -c "
 import os
 
 env_path = os.environ['ENV_PATH']
 updates = {
-    'DEFAULT_RAM': os.environ['NEW_RAM'],
-    'DEFAULT_CPU': os.environ['NEW_CPU'],
-    'DEFAULT_DISK': os.environ['NEW_DISK'],
-    'VPS_HOSTNAME': os.environ['NEW_HOSTNAME'],
-    'SERVER_LIMIT': os.environ['NEW_SERVER_LIMIT'],
-    'TOTAL_SERVER_LIMIT': os.environ['NEW_TOTAL_LIMIT'],
+    'DEPLOY_RAM': os.environ['NEW_RAM'],
+    'DEPLOY_CPU': os.environ['NEW_CPU'],
+    'DEPLOY_DISK': os.environ['NEW_DISK'],
+    'VPS_DEPLOY_LIMIT': os.environ['NEW_LIMIT'],
+    'DEPLOY_SLOT': os.environ['NEW_SLOT'],
+    'DEFAULT_VPS_EXPIRATION_DAYS': os.environ['NEW_EXPIRY'],
+    'EXPIRATION_WARNING_DAYS': os.environ['NEW_WARNING'],
 }
 
-if os.path.exists(env_path):
-    with open(env_path, 'r') as f:
-        lines = f.readlines()
-else:
-    lines = []
+with open(env_path, 'r') as f:
+    lines = f.readlines()
 
 updated_keys = set()
 new_lines = []

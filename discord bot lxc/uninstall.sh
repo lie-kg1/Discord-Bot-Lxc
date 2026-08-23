@@ -12,7 +12,7 @@ printf "\033[1;31mThis will permanently:\033[0m\n"
 printf "  • Stop and remove the systemd 'bot' service (if present)\n"
 printf "  • Kill any running 'python3 bot.py' processes\n"
 printf "  • Delete the '%s/' directory and everything in it\n" "$ENV_DIR"
-printf "  • Delete bot.pid, bot.log, vps_bot.db, test.env, requirements.txt, and bot.py from this folder\n\n"
+printf "  • Delete bot.pid, bot.log, vps.db, vps.db-wal, vps.db-shm, .env, requirements.txt, and bot.py from this folder\n\n"
 
 read -p "Type 'yes' to confirm and continue: " CONFIRM
 if [ "$CONFIRM" != "yes" ]; then
@@ -22,11 +22,11 @@ fi
 
 echo
 
-# Stop any running bot instances (matches this project's launch command specifically)
+# Stop any running bot instances
 printf "\033[1;33m🛑 Stopping any running bot processes...\033[0m\n"
 pkill -f "python3[[:space:]]\+bot\.py" 2>/dev/null
 
-# Clean up local PID or background artifacts if they exist in current root folder
+# Clean up local PID or background artifacts
 if [ -f "vps-deploy/bot.pid" ]; then
     PID=$(cat vps-deploy/bot.pid 2>/dev/null)
     if [ -n "$PID" ]; then
@@ -63,6 +63,6 @@ fi
 
 # Clear out orphaned runtime files/databases from workspace root
 printf "\033[1;31m🧹 Cleaning up residual workspace files...\033[0m\n"
-rm -f bot.pid bot.log vps_bot.db test.env requirements.txt bot.py
+rm -f bot.pid bot.log vps.db vps.db-wal vps.db-shm .env requirements.txt bot.py
 
 printf "\n\033[1;32m✨ Uninstallation completed successfully! All bot files, databases, and background services have been removed.\033[0m\n"

@@ -9,7 +9,7 @@ launch_botpanel() {
         printf "\033[1;33mbotpanel not found at %s\033[0m\n" "$BOTPANEL_DIR"
         read -p "Clone the repo now to fetch it? [y/N]: " confirm
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            git clone "$BOTPANEL_REPO" "$(dirname "$BOTPANEL_DIR")"/.. 2>/dev/null || \
+            git clone "$BOTPANEL_REPO" "$(dirname "$BOTPANEL_DIR")" 2>/dev/null || \
             git clone "$BOTPANEL_REPO" "$HOME/1.0-Bot-lxc"
         else
             printf "\033[1;31mCannot launch botpanel without it present.\033[0m\n"
@@ -76,6 +76,7 @@ while true; do
             read -p "Press Enter to continue..."
             ;;
         6)
+            launch_botpanel
             read -p "Press Enter to continue..."
             ;;
         7)

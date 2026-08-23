@@ -1,5 +1,4 @@
 #!/bin/bash
-# Exit immediately if a command exits with a non-zero status
 set -e
 
 REPO_RAW="https://raw.githubusercontent.com/lie-kg1/1.0-Bot-lxc/refs/heads/main"
@@ -36,13 +35,14 @@ fetch_file() {
 }
 
 # Handle .env configuration safely
-if [ -f "test.env" ]; then
-    cp test.env vps-deploy/.env
-    printf "\033[1;32m✅ Copied local test.env to vps-deploy/.env\033[0m\n"
+if [ -f ".env" ]; then
+    cp .env vps-deploy/.env
+    printf "\033[1;32m✅ Copied local .env to vps-deploy/.env\033[0m\n"
 elif [ -f "vps-deploy/.env" ]; then
     printf "\033[1;32m✅ Existing .env configuration found!\033[0m\n"
 else
-    fetch_file "$REPO_RAW/bot/test.env" "vps-deploy/.env" ".env configuration"
+    fetch_file "$REPO_RAW/bot/.env.example" "vps-deploy/.env" ".env configuration"
+    printf "\033[1;33m⚠️  Edit vps-deploy/.env and set your DISCORD_TOKEN and MAIN_ADMIN_ID before starting the bot!\033[0m\n"
 fi
 
 # Handle requirements.txt
@@ -70,24 +70,27 @@ if ! command -v apt >/dev/null 2>&1; then
     exit 1
 fi
 
-sudo apt update -y && sudo apt install -y python3-pip
+sudo apt update -y && sudo apt install -y python3-pip lxc
 
 # Move into vps-deploy to install python packages
 cd vps-deploy || exit 1
 
-# Install requirements if present (removed --break-system-packages for container compatibility)
+# Install requirements if present
 if [ -f "requirements.txt" ]; then
     python3 -m pip install -r requirements.txt --quiet
 fi
 
 python3 -m pip install --upgrade --quiet \
-    discord.py docker python-dotenv aiofiles PyNaCl psutil
+    discord.py python-dotenv requests PyNaCl aiofiles
 
 printf "\033[1;36m⚙️ Checking environment capabilities...\033[0m\n"
-if [ -S /var/run/docker.sock ]; then
-    printf "\033[1;32m✅ Docker socket detected.\033[0m\n"
+if command -v lxc >/dev/null 2>&1; then
+    printf "\033[1;32m✅ LXC CLI detected.\033[0m\n"
 else
-    printf "\033[1;33m⚠️ Note: Running in a local environment. Ensure Docker daemon is running if container features are required.\033[0m\n"
+    printf "\033[1;33m⚠️ Note: LXC CLI not found. Ensure LXD is installed and initialized (lxd init).\033[0m\n"
 fi
 
 printf "\033[1;32m✨ Installation completed successfully!\033[0m\n"
+printf "\033[1;33m👉 Next steps:\033[0m\n"
+printf "  1. Edit vps-deploy/.env with your real token and admin ID\n"
+printf "  2. Run: cd vps-deploy && python3 bot.py\n"

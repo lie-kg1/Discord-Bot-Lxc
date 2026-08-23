@@ -13,7 +13,7 @@ fi
 ENV_PATH="$ENV_DIR/.env"
 
 printf "\033[1;36m🤖 ─────────────────────────────────────────\033[0m\n"
-printf "\033[1;36m        DISCORD BOT SETUP (CREATE BOT)        \033[0m\n"
+printf "\033[1;36m        DISCORD BOT SETUP (LXC VPS BOT)        \033[0m\n"
 printf "\033[1;36m────────────────────────────────────────────\033[0m\n\n"
 
 if [ -f "$ENV_PATH" ]; then
@@ -27,22 +27,16 @@ if [ -f "$ENV_PATH" ]; then
 fi
 
 # ---- Validation helpers ----
-validate_size() {
-    [[ "$1" =~ ^[0-9]+[gGmM]$ ]]
-}
-validate_int() {
-    [[ "$1" =~ ^[0-9]+$ ]]
-}
-validate_hostname() {
-    [[ "$1" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]
-}
 validate_discord_id() {
-    # Discord snowflake IDs are numeric, typically 17-19 digits
+    # Discord snowflake IDs are numeric, typically 17-20 digits
     [[ "$1" =~ ^[0-9]{15,20}$ ]]
 }
 validate_token_shape() {
     # Loose sanity check: Discord bot tokens are non-empty, no spaces, reasonably long
     [ -n "$1" ] && [[ "$1" != *' '* ]] && [ "${#1}" -ge 20 ]
+}
+validate_ip() {
+    [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
 prompt_required() {
@@ -79,7 +73,6 @@ prompt_with_default() {
 }
 
 # ---- Bot identity ----
-# -s hides the token as it's typed so it doesn't linger in scrollback/screen recordings
 read -s -p "🔑  Enter your Discord Bot Token (hidden): " BOT_TOKEN
 echo
 if ! validate_token_shape "$BOT_TOKEN"; then
@@ -87,43 +80,47 @@ if ! validate_token_shape "$BOT_TOKEN"; then
     exit 1
 fi
 
-prompt_required "👤  Enter your Admin Discord User ID" ADMIN_ID validate_discord_id \
+prompt_required "👤  Enter your Discord User ID (Main Admin)" MAIN_ADMIN_ID validate_discord_id \
     "Discord IDs are numeric, 15-20 digits. Right-click your user in Discord (Developer Mode on) → Copy User ID."
 
-prompt_with_default "🏷️  Enter Bot Status Name" "UnixNodes" BOT_STATUS "" ""
-prompt_with_default "💬  Enter Watermark text" "Powered by UnixNodes VPS Bot" WATERMARK "" ""
+prompt_with_default "🏷️  Enter Bot Name" "PapiaGamerz VMS" BOT_NAME "" ""
+prompt_with_default "💬  Enter Command Prefix" "!" PREFIX "" ""
+prompt_required "🌐  Enter your Server Public IP" YOUR_SERVER_IP validate_ip \
+    "Must be a valid IPv4 address (e.g. 192.168.1.100). NOT 127.0.0.1."
 
-printf "\n\033[1;33m⚙️  --- VPS DEFAULTS CONFIGURATION ---\033[0m\n"
-prompt_with_default "🧠  Enter Default RAM" "2g" DEFAULT_RAM validate_size \
-    "Use a number followed by g/G or m/M, e.g. 2g, 512m."
-prompt_with_default "⚡  Enter Default CPU" "1" DEFAULT_CPU validate_int \
-    "Enter a whole number."
-prompt_with_default "💾  Enter Default Disk" "10G" DEFAULT_DISK validate_size \
-    "Use a number followed by g/G or m/M, e.g. 10G, 512m."
-prompt_with_default "🌐  Enter VPS Hostname" "unix-free" VPS_HOSTNAME validate_hostname \
-    "Use letters, digits, hyphens only (no leading/trailing hyphen)."
-prompt_with_default "📊  Enter Server Limit per user" "1" SERVER_LIMIT validate_int \
-    "Enter a whole number."
-prompt_with_default "📈  Enter Total Server Limit" "50" TOTAL_SERVER_LIMIT validate_int \
-    "Enter a whole number."
+printf "\n\033[1;33m⚙️  --- VPS DEPLOY DEFAULTS ---\033[0m\n"
+prompt_with_default "🧠  Deploy RAM (GB)" "16" DEPLOY_RAM "" ""
+prompt_with_default "⚡  Deploy CPU Cores" "3" DEPLOY_CPU "" ""
+prompt_with_default "💾  Deploy Disk (GB)" "80" DEPLOY_DISK "" ""
+prompt_with_default "📊  Deploy Limit per user" "2" VPS_DEPLOY_LIMIT "" ""
+prompt_with_default "📈  Global Deploy Slot Cap (0=unlimited)" "50" DEPLOY_SLOT "" ""
+prompt_with_default "⏰  Default Expiration Days" "30" DEFAULT_VPS_EXPIRATION_DAYS "" ""
 
 cat <<EOF > "$ENV_PATH"
-TOKEN=$BOT_TOKEN
-ADMIN_ID=$ADMIN_ID
-BOT_STATUS_NAME=$BOT_STATUS
-WATERMARK=$WATERMARK
-DEFAULT_RAM=$DEFAULT_RAM
-DEFAULT_CPU=$DEFAULT_CPU
-DEFAULT_DISK=$DEFAULT_DISK
-VPS_HOSTNAME=$VPS_HOSTNAME
-SERVER_LIMIT=$SERVER_LIMIT
-TOTAL_SERVER_LIMIT=$TOTAL_SERVER_LIMIT
-DATABASE_FILE=vps_bot.db
+DISCORD_TOKEN=$BOT_TOKEN
+BOT_NAME=$BOT_NAME
+PREFIX=$PREFIX
+YOUR_SERVER_IP=$YOUR_SERVER_IP
+MAIN_ADMIN_ID=$MAIN_ADMIN_ID
+VPS_USER_ROLE_ID=0
+DEFAULT_STORAGE_POOL=default
+BOT_VERSION=8.0-PRO
+BOT_DEVELOPER=PapiaGamerz
+BOT_THUMBNAIL_URL=https://i.imgur.com/Tv3clt0.jpeg
+BOT_ICON_URL=https://i.imgur.com/Tv3clt0.jpeg
+DEFAULT_VPS_EXPIRATION_DAYS=$DEFAULT_VPS_EXPIRATION_DAYS
+EXPIRATION_WARNING_DAYS=1
+DEPLOY_RAM=$DEPLOY_RAM
+DEPLOY_CPU=$DEPLOY_CPU
+DEPLOY_DISK=$DEPLOY_DISK
+DEPLOY_ROLE_ID=0
+VPS_DEPLOY_LIMIT=$VPS_DEPLOY_LIMIT
+DEPLOY_SLOT=$DEPLOY_SLOT
+HOST_MOTD=
 EOF
 
-# Restrict permissions since this file contains a live bot token
 chmod 600 "$ENV_PATH"
 
-printf "\n\033[1;32m✅  Configuration and VPS Defaults successfully saved to %s!\033[0m\n" "$ENV_PATH"
+printf "\n\033[1;32m✅  Configuration successfully saved to %s!\033[0m\n" "$ENV_PATH"
 printf "\033[1;32m🔒  File permissions set to owner-read/write only (chmod 600).\033[0m\n"
 printf "\033[1;32m🚀  You can now run your bot using: cd %s && python3 bot.py\033[0m\n" "$ENV_DIR"
