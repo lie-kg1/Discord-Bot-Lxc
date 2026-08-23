@@ -18,8 +18,9 @@ import string
 import secrets
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (always from bot.py's directory)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(SCRIPT_DIR, '.env'))
 
 # Bot start time tracker for accurate uptime
 _BOT_START_TIME = None
@@ -1461,6 +1462,18 @@ async def on_ready():
     global vps_data, admin_data, _BOT_START_TIME
     if _BOT_START_TIME is None:
         _BOT_START_TIME = datetime.now()
+
+    # Critical env var check
+    missing = []
+    if not DISCORD_TOKEN:
+        missing.append("DISCORD_TOKEN")
+    if not YOUR_SERVER_IP:
+        missing.append("YOUR_SERVER_IP")
+    if missing:
+        logger.error(f"MISSING REQUIRED ENV VARS: {', '.join(missing)} — check your .env file!")
+    else:
+        logger.info("All critical environment variables loaded successfully.")
+
     logger.info(f'{bot.user} has connected to Discord!')
     # Reload ALL data from DB on every ready (covers restarts + gateway reconnects)
     vps_data = get_vps_data()
